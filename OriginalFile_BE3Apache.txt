@@ -1,0 +1,414 @@
+LoadModule ssl_module modules/mod_ssl.so
+Listen 443
+
+## rewrite rules for www.cpaexcel.com
+<Directory /var/www/www.cpaexcel.com/htdocs>
+  Options +FollowSymLinks
+  RewriteEngine On
+  #RewriteBase /
+  RewriteBase /cpa/
+  ## let Apache directly serve media uploaded via joomla
+  ## this is also needed for the custom 404 stuff below
+  #RewriteRule ^images/.* - [L]
+  ## standard Joomla rewrite rule for nice urls
+  RewriteCond %{QUERY_STRING} base64_encode[^(]*\([^)]*\) [OR]
+  RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
+  RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+  RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+  RewriteRule .* index.php [F]
+  ## Begin - Joomla! core SEF Section.
+  ## Added 11/25/2104 by cgoleman for wileycpaexcel WP site
+  RewriteCond $1 ^wp- [OR]
+  RewriteCond %{DOCUMENT_ROOT}/.shadow/$1 -f [OR]
+  RewriteCond %{DOCUMENT_ROOT}/.shadow/$1 -d
+  RewriteRule ^/?(.*?)(/*)$ ../$1$2 [L]
+  ##
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteCond %{REQUEST_URI} !^/index\.php
+  RewriteCond %{REQUEST_URI} /component/|(/[^.]*|\.(php|html?|feed|pdf|vcf|raw))$ [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule .* index.php [L]
+  ## End - Joomla! core SEF Section.
+</Directory>
+
+## if we're missing an image, redirect to the old images first
+<Directory /var/www/www.cpaexcel.com/htdocs/images>
+  ErrorDocument 404 /images/404.php
+</Directory>
+## then if it's still not found, serve up a placeholder
+<Directory /var/www/static/htdocs/images>
+  ErrorDocument 404 /images/spacer.gif
+</Directory>
+
+## never allow svn file access
+<DirectoryMatch .*\.svn/.*>
+  Deny From All
+</DirectoryMatch>
+
+## no joomla admin access in production
+<Directory /var/www/www.cpaexcel.com/htdocs/administrator>
+  Deny From All
+  AuthType basic
+  AuthName "private area"
+  AuthUserFile /etc/httpd/users
+  Require valid-user
+</Directory>
+
+## SSL www.cpaexcel.com vhost
+<VirtualHost 72.44.220.40:443>
+  SSLEngine on
+  SSLCACertificateFile /etc/httpd/ssl/efficientlearning.com_CA.crt
+  SSLCertificateFile /etc/httpd/ssl/efficientlearning.com.crt
+  SSLCertificateKeyFile /etc/httpd/ssl/efficientlearning.com_private.key
+  #SSLProtocol ALL -SSLv2
+  SSLProtocol all -SSLv2 -SSLv3
+  SSLHonorCipherOrder on
+  #SSLCipherSuite HIGH:MEDIUM:RC4+RSA:!ADH:!EXP:!SSLv2:!aNULL:!MD5:!3DES
+  SSLCipherSuite ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+  ErrorLog logs/ssl_error_log
+  TransferLog logs/ssl_access_log
+  LogLevel warn
+
+  DocumentRoot /var/www/www.cpaexcel.com/htdocs
+  ServerName www.cpaexcel.com
+
+  ProxyRequests Off
+
+  ## stuff hosted in tomcat -- ebpv3 covered by ebp
+  ProxyPass /ebpv3 http://app1/ebpv3 disablereuse=On
+  ProxyPassReverse /ebpv3 http://app1/ebpv3
+
+  #ProxyPass /ebpv4 http://app1/ebpv4 disablereuse=On
+  #ProxyPassReverse /ebpv4 http://app1/ebpv4
+
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteRule ^(.*)/ebpv4/(.*)$ http://app.efficientlearning.com/ebpv4/$2 [R,L]
+
+  ProxyPass /ebp http://app1/ebp disablereuse=On
+  ProxyPassReverse /ebp http://app1/ebp
+  ProxyPass /pv5 http://app1/pv5 disablereuse=On
+  ProxyPassReverse /pv5 http://app1/pv5
+  #ProxyPass /iffsa http://app1/iffsa disablereuse=On
+  #ProxyPassReverse /iffsa http://app1/iffsa
+  ProxyPass /kpmg http://app1/kpmg disablereuse=On
+  ProxyPassReverse /kpmg http://app1/kpmg
+
+  Redirect permanent / http://www.efficientlearning.com/cpa/
+</VirtualHost>
+
+## SSL www.efficientlearning.com vhost
+<VirtualHost 72.44.220.37:443>
+  SSLEngine on
+  SSLCACertificateFile /etc/httpd/ssl/efficientlearning.com_CA.crt
+  SSLCertificateFile /etc/httpd/ssl/efficientlearning.com.crt
+  SSLCertificateKeyFile /etc/httpd/ssl/efficientlearning.com_private.key
+  #SSLProtocol ALL -SSLv2
+  SSLProtocol all -SSLv2 -SSLv3
+  SSLHonorCipherOrder on
+  #SSLCipherSuite HIGH:MEDIUM:RC4+RSA:!ADH:!EXP:!SSLv2:!aNULL:!MD5:!3DES
+  SSLCipherSuite ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+
+  DocumentRoot /var/www/nowhere
+  ServerName www.efficientlearning.com
+
+  ProxyRequests Off
+
+  # migration start
+  Redirect  permanent /activatepin http://www.efficientlearning.com/pv5/v8/mycart.html?a=activate_pin#_activate_pin
+  Redirect  permanent /cmaoffline http://efficientlearning.custhelp.com/app/answers/list/kw/CMA
+  Redirect  permanent /myaccount http://www.efficientlearning.com/pv5/v8/myaccount.html?a=myproduct&f=myproduct#_login
+  Redirect  permanent /cpa/about http://www.efficientlearning.com/about-us/
+  Redirect  permanent /cpa/contact http://www.efficientlearning.com/contact-us/
+  Redirect  permanent /ycpa/privacy-policy http://www.efficientlearning.com/privacy-policy/
+  #Redirect  permanent /cma http://www.efficientlearning.com/wileycmaexcel
+  #Redirect  permanent /cpa http://www.efficientlearning.com/wileycpaexcel
+  Redirect  permanent /cpa/blog http://www.efficientlearning.com/blog
+  # migration stop
+  ProxyPass /pv5/v8/1/app/discussions !
+
+ ##########################REDIRECTING TO APP1.EFFICIENTLEARNING.COM START ##############################################
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteCond %{REQUEST_METHOD} !POST
+  RewriteRule ^(.*)/pv5/v8/(.*)$ http://app.efficientlearning.com/pv5/v8/$2 [R,NE,L]
+ ##########################REDIRECTING TO APP1.EFFICIENTLEARNING.COM END ##############################################
+
+  ## stuff hosted in tomcat -- ebpv3 covered by ebp
+  ProxyPass /ebpv3 http://app.efficientlearning.com/ebpv3 disablereuse=On
+  ProxyPassReverse /ebpv3 http://app.efficientlearning.com/ebpv3
+
+  #ProxyPass /ebpv4 http://app.efficientlearning.com/ebpv4 disablereuse=On
+  #ProxyPassReverse /ebpv4 http://app.efficientlearning.com/ebpv4
+
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteRule ^(.*)/ebpv4/(.*)$ http://app.efficientlearning.com/ebpv4/$2 [R,L]
+
+  ProxyPass /pv5 http://app.efficientlearning.com/pv5 disablereuse=On
+  ProxyPassReverse /pv5 http://app.efficientlearning.com/pv5
+</VirtualHost>
+
+## www.cpaexcel.com vhost
+<VirtualHost *:80>
+  DocumentRoot /var/www/www.cpaexcel.com/htdocs
+  ServerName www.cpaexcel.com
+
+  #Alias /static /var/www/static/htdocs
+
+  #Redirect /email http://www.cpaexcel.com/static/email
+  #Alias /res /var/www/static/htdocs/res
+  # #Alias /partners/ /var/www/static/htdocs/partners
+  #RedirectMatch ^/partners/(.*)/images/(.*) http://www.cpaexcel.com/static/partners/$1/images/$2
+  Include vhost.d/redirects.d/01_cpaexcel_redirects.conf
+
+  ProxyRequests Off
+  ProxyPreserveHost On
+
+  ## website jsp form processors
+  #ProxyPass /canada.jsp ajp://app1:8009//canada.jsp
+  #ProxyPass /contact_us.jsp ajp://app1:8009//contact_us.jsp
+  #ProxyPass /cpa_exam.jsp ajp://app1:8009//cpa_exam.jsp
+  #ProxyPass /cpa_exam_ebook.jsp ajp://app1:8009//cpa_exam_ebook.jsp
+  #ProxyPass /cup.jsp ajp://app1:8009//cup.jsp
+  #ProxyPass /cup_info.jsp ajp://app1:8009//cup_info.jsp
+  #ProxyPass /iexam.jsp ajp://app1:8009//iexam.jsp
+  #ProxyPass /international.jsp ajp://app1:8009//international.jsp
+  #ProxyPass /iqex.jsp ajp://app1:8009//iqex.jsp
+  #ProxyPass /kieso.jsp ajp://app1:8009//kieso.jsp
+  #ProxyPass /pass_the_cpa_exam.jsp ajp://app1:8009//pass_the_cpa_exam.jsp
+  #ProxyPass /res/ref.jsp ajp://app1:8009//res/ref.jsp
+  #ProxyPass /student_center/referral_program.jsp ajp://app1:8009//student_center/referral_program.jsp
+  #ProxyPass /students/freeaccess.jsp ajp://app1:8009//students/freeaccess.jsp
+  #ProxyPass /students/register.jsp ajp://app1:8009//students/register.jsp
+
+  ## stuff hosted in tomcat
+  ProxyPass /ebpv3 http://app1/ebpv3 disablereuse=On
+  ProxyPassReverse /ebpv3 http://app1/ebpv3
+
+  #ProxyPass /ebpv4 http://app1/ebpv4 disablereuse=On
+  #ProxyPassReverse /ebpv4 http://app1/ebpv4
+
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteRule ^(.*)/ebpv4/(.*)$ http://app.efficientlearning.com/ebpv4/$2 [R,L]
+
+  ProxyPass /ebp http://app1/ebp disablereuse=On
+  ProxyPassReverse /ebp http://app1/ebp
+  ProxyPass /pv4 http://app1/pv4 disablereuse=On
+  ProxyPassReverse /pv4 http://app1/pv4
+  ProxyPass /pv5 http://app1/pv5 disablereuse=On
+  ProxyPassReverse /pv5 http://app1/pv5
+  ProxyPass /strayer http://app1/strayer disablereuse=On
+  ProxyPassReverse /strayer http://app1/strayer
+
+  Redirect  permanent / http://www.efficientlearning.com/cpa/
+</VirtualHost>
+
+## always redirect cpaexcel.com to www.cpaexcel.com
+<VirtualHost *:80>
+  DocumentRoot /var/www/nowhere
+  ServerName cpaexcel.com
+  ServerAlias www2.cpaexcel.com test.cpaexcel.com
+  #Redirect permanent / http://www.cpaexcel.com/
+  Redirect permanent / http://www.efficientlearning.com/cpa/
+</VirtualHost>
+
+## no joomla admin access in production
+<Directory /var/www/wcpaexcel/htdocs/administrator>
+#  Deny From All
+  AuthType basic
+  AuthName "private area"
+  AuthUserFile /etc/httpd/users
+  Require valid-user
+</Directory>
+
+## no wordpress admin access in production
+<Directory /var/www/www.efficientlearning.com/htdocs/wp-admin>
+#  Deny From All
+  Deny from 78.46.24.205
+  AuthType basic
+  AuthName "private area"
+  AuthUserFile /etc/httpd/users
+  Require valid-user
+</Directory>
+
+<Files wp-login.php>
+ Deny from 78.46.24.205
+  AuthType basic
+  AuthName "private area"
+  AuthUserFile /etc/httpd/users
+  Require valid-user
+</Files>
+
+<Directory /var/www/wcpaexcel/htdocs>
+  #AuthType basic
+  #AuthName "private area"
+  #AuthUserFile /etc/httpd/users
+  #Require valid-user
+
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteBase /cpa/
+  RewriteCond %{QUERY_STRING} base64_encode[^(]*\([^)]*\) [OR]
+  RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
+  RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+  RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+  RewriteRule .* index.php [F]
+  # Begin - Joomla! core SEF Section.
+  ## Added 11/25/2104 by cgoleman for wileycpaexcel WP site
+  RewriteCond $1 ^wp- [OR]
+  RewriteCond %{DOCUMENT_ROOT}/.shadow/$1 -f [OR]
+  RewriteCond %{DOCUMENT_ROOT}/.shadow/$1 -d
+  RewriteRule ^/?(.*?)(/*)$ ../$1$2 [L]
+  ##
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteCond %{REQUEST_URI} !^/index\.php
+  RewriteCond %{REQUEST_URI} /component/|(/[^.]*|\.(php|html?|feed|pdf|vcf|raw))$ [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule .* index.php [L]
+  ## End - Joomla! core SEF Section.
+</Directory>
+
+<Directory /var/www/www.efficientlearning.com/htdocs>
+#  AuthType basic
+#  AuthName "private area"
+#  AuthUserFile /etc/httpd/users
+#  Require valid-user
+
+  AllowOverride All
+  RewriteEngine On
+  RewriteBase /
+  RewriteCond %{REQUEST_URI} !^/cpa
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.php [L]
+</Directory>
+
+<VirtualHost *:80>
+  DocumentRoot /var/www/www.efficientlearning.com/htdocs
+  ServerName www.efficientlearning.com
+  Alias /cpa /var/www/wcpaexcel/htdocs
+
+  <Location /images>
+    ExpiresActive On
+    # 1 day
+    ExpiresDefault A86400
+  </Location>
+  <Location /cpa/wp-content/themes>
+    ExpiresActive On
+    # 1 day
+    ExpiresDefault A86400
+  </Location>
+  <Location /cpa/wp-content/uploads>
+    ExpiresActive On
+    # 1 day
+    ExpiresDefault A86400
+  </Location>
+  <Location /wp-content/themes>
+    ExpiresActive On
+    # 1 day
+    ExpiresDefault A86400
+  </Location>
+  <Location /wp-content/uploads>
+    ExpiresActive On
+    # 1 day
+    ExpiresDefault A86400
+  </Location>
+ProxyPass /pv5/v8/1/app/discussions !
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteCond %{REQUEST_METHOD} !POST
+  RewriteRule ^(.*)/pv5/v8/(.*)$ http://app.efficientlearning.com/pv5/v8/$2 [R,NE,L]
+
+##########################REDIRECTING TO APP1.EFFICIENTLEARNING.COM START ##############################################
+#Options +FollowSymLinks
+#RewriteEngine On
+#RewriteRule ^(.*)/pv5/v8/1/(.*)$ http://app.efficientlearning.com/pv5/v8/1/$2 [R,L]
+ ##########################REDIRECTING TO APP1.EFFICIENTLEARNING.COM END ##############################################
+
+# migration start
+Redirect permanent /activatepin http://www.efficientlearning.com/pv5/v8/mycart.html?a=activate_pin#_activate_pin
+Redirect permanent /cmaoffline http://efficientlearning.custhelp.com/app/answers/list/kw/CMA
+Redirect permanent /myaccount http://www.efficientlearning.com/pv5/v8/myaccount.html?a=myproduct&f=myproduct#_login
+Redirect permanent /cpa/about http://www.efficientlearning.com/about-us/
+Redirect permanent /cpa/contact http://www.efficientlearning.com/contact-us/
+Redirect permanent /cpa/privacy-policy http://www.efficientlearning.com/privacy-policy/
+#Redirect permanent /cma http://www.efficientlearning.com/wileycmaexcel
+#Redirect permanent /cpa http://www.efficientlearning.com/wileycpaexcel
+Redirect permanent /cpa/partners/kpmg-us http://www.efficientlearning.com/cpa/partners/kpmg
+Redirect permanent /cpa/blog http://www.efficientlearning.com/blog
+Redirect permanent /cpa/cofc http://www.efficientlearning.com/cpa/partners/college-of-charleston
+Redirect permanent /cpa/CofC http://www.efficientlearning.com/cpa/partners/college-of-charleston
+# migration stop
+
+## el.com redirects start
+#@TODO move this to an exertnal file in redirects.d to be consistent with cpax.com
+#05MAY2015 wileycmaexcel to CMA
+#Redirect permanent /wileycmaexcel/cma-products/cma-ls-oir http://www.efficientlearning.com/wileycmaexcel/products
+Redirect permanent /cma/cma-products/cma-ls-oir http://www.efficientlearning.com/cma/products
+Redirect permanent /cpa/dummies https://www.efficientlearning.com/pv5/v8/mycart.html?a=activate_pin#_activate_pin
+Redirect permanent /cpa/afwa http://www.efficientlearning.com/cpa/partners/afwa
+Redirect permanent /cpa/MWE http://www.efficientlearning.com/cpa/partners/margolin-winer-evens-llp
+Redirect permanent /cpa/mwe http://www.efficientlearning.com/cpa/partners/margolin-winer-evens-llp
+#Redirect permanent /cfa http://www.efficientlearning.com/wiley-cfa
+#Redirect permanent /CFA http://www.efficientlearning.com/wiley-cfa
+Redirect permanent /cpa/our-partners/compare-testify-tour http://www.efficientlearning.com/cpa/our-partners/cpa-training-for-firms
+Redirect permanent /cpa/scholarship http://www.efficientlearning.com/cpa/cpa-exam-programs/scholarship
+Redirect permanent /cpa/lakeland http://www.efficientlearning.com/cpa/partners/lakeland
+Redirect permanent /cpa/freetrial http://www.efficientlearning.com/cpa/cpa-resources/getting-started/free-trial
+Redirect permanent /cpa/FreeTrial http://www.efficientlearning.com/cpa/cpa-resources/getting-started/free-trial
+Redirect permanent /cpa/hofstra http://www.efficientlearning.com/cpa/partners/Hofstra
+Redirect permanent /cpa/kpmg http://www.efficientlearning.com/cpa/partners/kpmg
+## el.com redirects end
+
+## stuff hosted in tomcat
+ProxyRequests Off
+ProxyPass /ebpv3 http://app1/ebpv3 disablereuse=On
+ProxyPassReverse /ebpv3 http://app1/ebpv3
+
+#ProxyPass /ebpv4 http://app1/ebpv4 disablereuse=On
+#ProxyPassReverse /ebpv4 http://app1/ebpv4
+
+  Options +FollowSymLinks
+  RewriteEngine On
+  RewriteRule ^(.*)/ebpv4/(.*)$ http://app.efficientlearning.com/ebpv4/$2 [R,L]
+
+ProxyPass /ebp http://app1/ebp disablereuse=On
+ProxyPassReverse /ebp http://app1/ebp
+ProxyPass /pv5/v8/1/app/discussions !
+
+ProxyPass /pv5 http://app1/pv5 disablereuse=On
+ProxyPassReverse /pv5 http://app1/pv5
+</VirtualHost>
+
+<VirtualHost *:80>
+#DocumentRoot /var/www/nowhere
+# DocumentRoot /var/www/www.cpaexcel.com/htdocs
+#ServerName www2.efficientlearning.com
+
+  #Alias /wileycpaexcel /var/www/www.cpaexcel.com/htdocs
+
+  ## stuff hosted in tomcat
+  #ProxyPass /ebpv3 http://app1/ebpv3 disablereuse=On
+  #ProxyPassReverse /ebpv3 http://app1/ebpv3
+  #ProxyPass /ebp http://app1/ebp disablereuse=On
+  #ProxyPassReverse /ebp http://app1/ebp
+  #ProxyPass /pv5 http://app1/pv5 disablereuse=On
+  #ProxyPassReverse /pv5 http://app1/pv5
+
+  #RedirectMatch permanent ^/(?!(wileycpaexcel|ebp|pv5))(.*) http://www.efficientlearning.com/$1
+
+  DocumentRoot /var/www/nowhere
+  ServerName www2.efficientlearning.com
+  RedirectMatch permanent ^/(.*)  http://www.efficientlearning.com/$1
+
+</VirtualHost>
+
+<VirtualHost *:80>
+  DocumentRoot /var/www/nowhere
+  ServerName efficientlearning.com
+  Redirect permanent / http://www.efficientlearning.com/
+</VirtualHost>
